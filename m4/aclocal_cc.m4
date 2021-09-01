@@ -442,6 +442,58 @@ else
 fi
 ])
 
+dnl
+dnl PAC_CC_VENDOR:
+dnl Try to get a version string for the C compiler.  We may
+dnl need this to find likely command-line arguments for accessing
+dnl shared libraries
+dnl
+AC_DEFUN([PAC_CC_VENDOR],[
+AC_MSG_CHECKING([for C compiler vendor])
+# This is complicated by some compilers (such as the Intel 8.1 ifort)
+# that return a non-zero status even when they accept the -V option
+# (a zero status is returned only if there is a file).
+pac_cv_cc_vendor="unknown"
+for arg in --version -V -v ; do
+    rm -f conftest.txt
+    PAC_RUNLOG([$CC $arg </dev/null >conftest.txt 2>&1])
+    # Ignore the return code, because some compilers set the
+    # return code to zero on invalid arguments and some to
+    # non-zero on success (with no files to compile)
+    if test -f conftest.txt ; then
+        if grep 'Portland Group' conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=pgi
+        elif grep 'Sun Workshop' conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=sun
+        elif grep 'Sun C' conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=sun
+        elif grep 'Absoft' conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=absoft
+        elif grep 'Free Software Foundation, Inc.' conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=gnu
+        elif grep Intel conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=intel
+        elif grep clang conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_cc_vendor=clang
+        fi
+    fi
+    if test "$pac_cv_cc_vendor" != "unknown" ; then break ; fi
+done
+if test "$pac_cv_cc_vendor" = "unknown" ; then
+    # Try to use the compiler name
+    if test "$CC" = "icc" -o "$CC" = "icx" ; then
+        pac_cv_cc_vendor=intel
+    elif test "$CC" = "pgcc" ; then
+        pac_cv_cc_vendor=pgi
+    elif test "$CC" = "xlcc" ; then
+        pac_cv_cc_vendor=ibm
+    fi
+fi
+AC_MSG_RESULT([$pac_cv_cc_vendor])
+rm -f conftest.txt
+# End of checking for C compiler vendor
+])
+
 dnl Use the value of enable-strict to update CFLAGS
 dnl pac_cc_strict_flags contains the strict flags.
 dnl
@@ -453,6 +505,7 @@ dnl had trouble with gcc 2.95.3 accepting -std=c89 but then trying to
 dnl compile program with a invalid set of options
 dnl (-D __STRICT_ANSI__-trigraphs)
 AC_DEFUN([PAC_CC_STRICT],[
+PAC_CC_VENDOR()
 export enable_strict_done
 if test "$enable_strict_done" != "yes" ; then
 
@@ -521,7 +574,6 @@ if test "$enable_strict_done" != "yes" ; then
         -Wmissing-prototypes
         -DGCC_WALL
         -Wno-unused-parameter
-        -Wno-unused-label
         -Wshadow
         -Wmissing-declarations
         -Wno-long-long
@@ -549,6 +601,16 @@ if test "$enable_strict_done" != "yes" ; then
         -Wshorten-64-to-32
         -diag-disable=all
     "
+
+    case "$pac_cv_cc_vendor" in
+        gnu)
+            pac_common_strict_flags="${pac_common_strict_flags}
+                -Wno-unused-label
+            "
+            ;;
+        *)
+            ;;
+    esac
 
     enable_c89=no
     enable_c99=no
